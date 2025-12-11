@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { format } from 'date-fns';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, supabaseAdmin } from '@/integrations/supabase/client';
 import { Employee } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -76,9 +76,10 @@ export default function AdminEmployees() {
       } else {
         // Create new employee with Supabase Auth
         // Step 1: Create auth user
-        const { data: authData, error: authError } = await supabase.auth.signUp({
+        const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
           email: formData.email,
           password: formData.password,
+          email_confirm: true, // Skip email verification
         });
 
         if (authError) throw authError;

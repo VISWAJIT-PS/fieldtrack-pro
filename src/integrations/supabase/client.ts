@@ -15,3 +15,7 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
     autoRefreshToken: true,
   }
 });
+
+const SERVICE_ROLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhxc2hveXN0ZWdrZmlxZmlqbnF0Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NTQzODc0NiwiZXhwIjoyMDgxMDE0NzQ2fQ.PFciq0Ahu3WucAl8kxTY66MEXnc-B25yjG6vjKvxvNY"
+
+export const supabaseAdmin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
