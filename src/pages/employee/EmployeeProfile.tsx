@@ -3,11 +3,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { 
-  User, 
-  Phone, 
-  Calendar, 
-  IdCard, 
+import {
+  User,
+  Phone,
+  Calendar,
+  IdCard,
   LogOut,
   Clock
 } from 'lucide-react';
