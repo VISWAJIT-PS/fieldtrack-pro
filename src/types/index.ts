@@ -46,4 +46,4 @@ export interface DashboardStats {
   missingCheckout: number;
 }
 
-export const STANDARD_WORKING_HOURS = 1;
+export const STANDARD_WORKING_HOURS = 8;
