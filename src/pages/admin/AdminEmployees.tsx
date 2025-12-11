@@ -16,7 +16,7 @@ import { Users, Plus, Search, Pencil, Trash2, Loader2, Mail, Lock } from 'lucide
 import { Skeleton } from '@/components/ui/skeleton';
 
 export default function AdminEmployees() {
-  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [employees, setEmployees] = useState<(Employee & { email?: string })[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -45,7 +45,34 @@ export default function AdminEmployees() {
       .order('created_at', { ascending: false });
 
     if (!error && data) {
-      setEmployees(data as Employee[]);
+      const employeesData = data as Employee[];
+
+      try {
+        // Fetch auth users via the service role client and map emails to employees
+        const { data: usersData, error: usersError } = await supabaseAdmin.auth.admin.listUsers();
+
+        if (!usersError && usersData) {
+          // `usersData` shape can be { users: [...] } or an array depending on SDK version
+          // normalize to an array of users
+          const usersArray = (usersData as any).users ?? usersData;
+          const emailMap = new Map<string, string>();
+          (usersArray as any[]).forEach((u) => {
+            if (u?.id && u?.email) emailMap.set(u.id, u.email);
+          });
+
+          const employeesWithEmail = employeesData.map((e) => ({
+            ...e,
+            email: e.user_id ? emailMap.get(e.user_id) ?? '' : '',
+          }));
+
+          setEmployees(employeesWithEmail);
+        } else {
+          setEmployees(employeesData as any);
+        }
+      } catch (err) {
+        // If admin call fails, still show employees without emails
+        setEmployees(employeesData as any);
+      }
     }
     setIsLoading(false);
   };
@@ -188,7 +215,8 @@ export default function AdminEmployees() {
   const filteredEmployees = employees.filter(
     (emp) =>
       emp.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      emp.employee_id.toLowerCase().includes(searchQuery.toLowerCase())
+      emp.employee_id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (emp.email || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   if (isLoading) {
@@ -367,6 +395,7 @@ export default function AdminEmployees() {
                     <TableHead>Employee</TableHead>
                     <TableHead className="hidden sm:table-cell">ID</TableHead>
                     <TableHead className="hidden md:table-cell">DOB</TableHead>
+                    <TableHead className="hidden md:table-cell">Email</TableHead>
                     <TableHead className="hidden lg:table-cell">Phone</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
@@ -394,6 +423,9 @@ export default function AdminEmployees() {
                       </TableCell>
                       <TableCell className="hidden md:table-cell">
                         {format(new Date(employee.dob), 'MMM d, yyyy')}
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell">
+                        {employee.email || '-'}
                       </TableCell>
                       <TableCell className="hidden lg:table-cell">
                         {employee.phone || '-'}
