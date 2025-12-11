@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
-import { Users, Plus, Search, Pencil, Trash2, Loader2 } from 'lucide-react';
+import { Users, Plus, Search, Pencil, Trash2, Loader2, Mail, Lock } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 
 export default function AdminEmployees() {
@@ -29,6 +29,8 @@ export default function AdminEmployees() {
     name: '',
     dob: '',
     phone: '',
+    email: '',
+    password: '',
   });
 
   useEffect(() => {
@@ -72,20 +74,44 @@ export default function AdminEmployees() {
           description: 'Employee information has been updated.',
         });
       } else {
-        // Create new employee
-        const { error } = await supabase.from('employees').insert({
+        // Create new employee with Supabase Auth
+        // Step 1: Create auth user
+        const { data: authData, error: authError } = await supabase.auth.signUp({
+          email: formData.email,
+          password: formData.password,
+        });
+
+        if (authError) throw authError;
+
+        if (!authData.user) {
+          throw new Error('Failed to create user account');
+        }
+
+        const userId = authData.user.id;
+
+        // Step 2: Insert into user_roles table
+        const { error: roleError } = await supabase.from('user_roles').insert({
+          user_id: userId,
+          role: 'employee',
+        });
+
+        if (roleError) throw roleError;
+
+        // Step 3: Insert into employees table with user_id
+        const { error: employeeError } = await supabase.from('employees').insert({
           employee_id: formData.employee_id,
           name: formData.name,
           dob: formData.dob,
           phone: formData.phone,
           role: 'employee',
+          user_id: userId,
         });
 
-        if (error) throw error;
+        if (employeeError) throw employeeError;
 
         toast({
           title: 'Employee Added',
-          description: 'New employee has been added successfully.',
+          description: 'New employee has been added successfully with login credentials.',
         });
       }
 
@@ -110,6 +136,8 @@ export default function AdminEmployees() {
       name: employee.name,
       dob: employee.dob,
       phone: employee.phone || '',
+      email: '',
+      password: '',
     });
     setDialogOpen(true);
   };
@@ -142,6 +170,8 @@ export default function AdminEmployees() {
       name: '',
       dob: '',
       phone: '',
+      email: '',
+      password: '',
     });
   };
 
@@ -248,6 +278,48 @@ export default function AdminEmployees() {
                   }
                 />
               </div>
+
+              {/* Email and Password - Only for new employees */}
+              {!editingEmployee && (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="email">Email (Login)</Label>
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        id="email"
+                        type="email"
+                        placeholder="employee@example.com"
+                        value={formData.email}
+                        onChange={(e) =>
+                          setFormData({ ...formData, email: e.target.value })
+                        }
+                        className="pl-10"
+                        required
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="password">Password</Label>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        id="password"
+                        type="password"
+                        placeholder="Minimum 6 characters"
+                        value={formData.password}
+                        onChange={(e) =>
+                          setFormData({ ...formData, password: e.target.value })
+                        }
+                        className="pl-10"
+                        minLength={6}
+                        required
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+
               <div className="flex justify-end gap-2">
                 <Button
                   type="button"
