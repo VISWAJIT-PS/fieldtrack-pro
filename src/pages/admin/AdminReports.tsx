@@ -10,8 +10,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { OvertimeBadge } from '@/components/OvertimeBadge';
-import { Clock, CalendarIcon, Download, FileText } from 'lucide-react';
+import { Clock, CalendarIcon, Download, FileText, MapPin } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { getGoogleMapsLink } from '@/lib/utils';
 import { toast } from '@/hooks/use-toast';
 
 export default function AdminReports() {
@@ -87,8 +88,8 @@ export default function AdminReports() {
       return;
     }
 
-    const headers = ['Employee Name', 'Employee ID', 'Date', 'Check In', 'Check Out', 'Total Hours', 'Overtime'];
-    
+    const headers = ['Employee Name', 'Employee ID', 'Date', 'Check In', 'Check Out', 'Total Hours', 'Overtime', 'Check In Loc', 'Check Out Loc'];
+
     const rows = attendance.map((record) => [
       record.employees?.name || 'Unknown',
       record.employees?.employee_id || 'Unknown',
@@ -97,6 +98,8 @@ export default function AdminReports() {
       record.check_out_time ? format(new Date(record.check_out_time), 'HH:mm') : '-',
       record.total_hours?.toFixed(2) || '0',
       record.overtime_hours?.toFixed(2) || '0',
+      record.check_in_location ? `${(record.check_in_location as any).latitude},${(record.check_in_location as any).longitude}` : '-',
+      record.check_out_location ? `${(record.check_out_location as any).latitude},${(record.check_out_location as any).longitude}` : '-',
     ]);
 
     const csvContent = [headers, ...rows]
@@ -275,14 +278,51 @@ export default function AdminReports() {
                         {format(new Date(record.created_at), 'MMM d, yyyy')}
                       </TableCell>
                       <TableCell>
-                        {record.check_in_time
-                          ? format(new Date(record.check_in_time), 'hh:mm a')
-                          : '--:--'}
+                        <div className="flex flex-col gap-1">
+                          <span>
+                            {record.check_in_time
+                              ? format(new Date(record.check_in_time), 'hh:mm a')
+                              : '--:--'}
+                          </span>
+                          {record.check_in_location && (
+                            <a
+                              href={
+                                getGoogleMapsLink(record.check_in_location) ||
+                                '#'
+                              }
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-1 text-xs text-primary hover:underline"
+                            >
+                              <MapPin className="h-3 w-3" /> Loc
+                            </a>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
-                        {record.check_out_time
-                          ? format(new Date(record.check_out_time), 'hh:mm a')
-                          : '--:--'}
+                        <div className="flex flex-col gap-1">
+                          <span>
+                            {record.check_out_time
+                              ? format(
+                                new Date(record.check_out_time),
+                                'hh:mm a'
+                              )
+                              : '--:--'}
+                          </span>
+                          {record.check_out_location && (
+                            <a
+                              href={
+                                getGoogleMapsLink(record.check_out_location) ||
+                                '#'
+                              }
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-1 text-xs text-primary hover:underline"
+                            >
+                              <MapPin className="h-3 w-3" /> Loc
+                            </a>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>{record.total_hours?.toFixed(1) || '0'}h</TableCell>
                       <TableCell>

@@ -8,9 +8,9 @@ import { Calendar } from '@/components/ui/calendar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { OvertimeBadge } from '@/components/OvertimeBadge';
 import { Badge } from '@/components/ui/badge';
-import { History, Clock } from 'lucide-react';
+import { History, Clock, MapPin } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
-import { cn } from '@/lib/utils';
+import { cn, getGoogleMapsLink } from '@/lib/utils';
 
 export default function EmployeeHistory() {
   const { employee } = useAuth();
@@ -148,18 +148,49 @@ export default function EmployeeHistory() {
                     <p className="font-medium">
                       {format(new Date(record.created_at), 'EEE, MMM d')}
                     </p>
-                    <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
-                      <span>
-                        {record.check_in_time
-                          ? format(new Date(record.check_in_time), 'hh:mm a')
-                          : '--:--'}
-                      </span>
-                      <span>→</span>
-                      <span>
-                        {record.check_out_time
-                          ? format(new Date(record.check_out_time), 'hh:mm a')
-                          : '--:--'}
-                      </span>
+                    <div className="mt-1 space-y-1">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <span>
+                          {record.check_in_time
+                            ? format(new Date(record.check_in_time), 'hh:mm a')
+                            : '--:--'}
+                        </span>
+                        <span>→</span>
+                        <span>
+                          {record.check_out_time
+                            ? format(new Date(record.check_out_time), 'hh:mm a')
+                            : '--:--'}
+                        </span>
+                      </div>
+                      <div className="flex gap-3 text-xs">
+                        {record.check_in_location && (
+                          <a
+                            href={
+                              getGoogleMapsLink(record.check_in_location) || '#'
+                            }
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1 text-primary hover:underline"
+                            title="View Check-in Location"
+                          >
+                            <MapPin className="h-3 w-3" /> In
+                          </a>
+                        )}
+                        {record.check_out_location && (
+                          <a
+                            href={
+                              getGoogleMapsLink(record.check_out_location) ||
+                              '#'
+                            }
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1 text-primary hover:underline"
+                            title="View Check-out Location"
+                          >
+                            <MapPin className="h-3 w-3" /> Out
+                          </a>
+                        )}
+                      </div>
                     </div>
                   </div>
                   <div className="text-right">

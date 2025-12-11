@@ -5,7 +5,7 @@ import { LucideIcon } from 'lucide-react';
 interface AttendanceSummaryCardProps {
   title: string;
   value: string | number;
-  subtitle?: string;
+  subtitle?: React.ReactNode;
   icon: LucideIcon;
   trend?: {
     value: number;

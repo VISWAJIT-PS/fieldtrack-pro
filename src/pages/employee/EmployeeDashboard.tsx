@@ -12,6 +12,7 @@ import { CameraCapture } from '@/components/CameraCapture';
 import { useGPS, checkLocationMatch } from '@/hooks/useGPS';
 import { toast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
+import { getGoogleMapsLink } from '@/lib/utils';
 
 export default function EmployeeDashboard() {
   const { employee } = useAuth();
@@ -119,15 +120,15 @@ export default function EmployeeDashboard() {
         const checkInTime = new Date(todayAttendance.check_in_time!);
         const checkOutTime = new Date();
         const hoursWorked = (checkOutTime.getTime() - checkInTime.getTime()) / (1000 * 60 * 60);
-        
+
         // Check location match for overtime calculation
         const locationMatch = checkLocationMatch(
           todayAttendance.check_in_location as any,
           location
         );
-        
-        const overtime = locationMatch && hoursWorked > STANDARD_WORKING_HOURS 
-          ? hoursWorked - STANDARD_WORKING_HOURS 
+
+        const overtime = locationMatch && hoursWorked > STANDARD_WORKING_HOURS
+          ? hoursWorked - STANDARD_WORKING_HOURS
           : 0;
 
         const { error } = await supabase
@@ -188,6 +189,8 @@ export default function EmployeeDashboard() {
         </p>
       </div>
 
+
+
       {/* Quick Stats */}
       <div className="grid grid-cols-2 gap-4">
         <AttendanceSummaryCard
@@ -196,6 +199,19 @@ export default function EmployeeDashboard() {
             hasCheckedIn
               ? format(new Date(todayAttendance!.check_in_time!), 'hh:mm a')
               : '--:--'
+          }
+          subtitle={
+            hasCheckedIn && todayAttendance?.check_in_location ? (
+              <a
+                href={getGoogleMapsLink(todayAttendance.check_in_location) || '#'}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1 text-xs text-primary hover:underline mt-1"
+              >
+                <MapPin className="h-3 w-3" />
+                View Location
+              </a>
+            ) : null
           }
           icon={LogIn}
           variant={hasCheckedIn ? 'success' : 'default'}
@@ -206,6 +222,19 @@ export default function EmployeeDashboard() {
             hasCheckedOut
               ? format(new Date(todayAttendance!.check_out_time!), 'hh:mm a')
               : '--:--'
+          }
+          subtitle={
+            hasCheckedOut && todayAttendance?.check_out_location ? (
+              <a
+                href={getGoogleMapsLink(todayAttendance.check_out_location) || '#'}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1 text-xs text-primary hover:underline mt-1"
+              >
+                <MapPin className="h-3 w-3" />
+                View Location
+              </a>
+            ) : null
           }
           icon={LogOut}
           variant={hasCheckedOut ? 'success' : 'default'}
@@ -292,19 +321,17 @@ export default function EmployeeDashboard() {
               return (
                 <div
                   key={day}
-                  className={`flex flex-col items-center rounded-lg p-2 ${
-                    isToday ? 'bg-primary text-primary-foreground' : ''
-                  }`}
+                  className={`flex flex-col items-center rounded-lg p-2 ${isToday ? 'bg-primary text-primary-foreground' : ''
+                    }`}
                 >
                   <span className="text-xs font-medium">{day}</span>
                   <div
-                    className={`mt-1 h-2 w-2 rounded-full ${
-                      isToday
-                        ? 'bg-primary-foreground'
-                        : isPast
+                    className={`mt-1 h-2 w-2 rounded-full ${isToday
+                      ? 'bg-primary-foreground'
+                      : isPast
                         ? 'bg-success'
                         : 'bg-muted'
-                    }`}
+                      }`}
                   />
                 </div>
               );
