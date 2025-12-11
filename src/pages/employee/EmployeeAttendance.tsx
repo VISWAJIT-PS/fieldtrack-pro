@@ -8,8 +8,10 @@ import { Button } from '@/components/ui/button';
 import { CameraCapture } from '@/components/CameraCapture';
 import { useGPS, checkLocationMatch } from '@/hooks/useGPS';
 import { toast } from '@/hooks/use-toast';
-import { LogIn, LogOut, MapPin, Camera, Clock, CheckCircle, Loader2 } from 'lucide-react';
+import { LogIn, LogOut, MapPin, Camera, Clock, CheckCircle, Loader2, Timer } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { OvertimeBadge } from '@/components/OvertimeBadge';
+import { getGoogleMapsLink } from '@/lib/utils';
 
 export default function EmployeeAttendance() {
   const { employee } = useAuth();
@@ -19,14 +21,103 @@ export default function EmployeeAttendance() {
   const [cameraOpen, setCameraOpen] = useState(false);
   const [actionType, setActionType] = useState<'check-in' | 'check-out'>('check-in');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [workingDuration, setWorkingDuration] = useState('00:00:00');
   const [currentTime, setCurrentTime] = useState(new Date());
 
+  // Update current time every second
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentTime(new Date());
     }, 1000);
     return () => clearInterval(timer);
   }, []);
+
+  // Update working duration
+  useEffect(() => {
+    const updateDuration = async () => {
+      if (todayAttendance?.check_in_time && !todayAttendance.check_out_time) {
+        const start = new Date(todayAttendance.check_in_time).getTime();
+        const now = new Date().getTime();
+        const diff = now - start;
+
+        const hours = Math.floor(diff / (1000 * 60 * 60));
+        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+        setWorkingDuration(
+          `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+        );
+
+        // Auto Checkout Logic (if greater than 9 hours)
+        if (diff > 9 * 60 * 60 * 1000) {
+          try {
+            // We need to fetch location here again seamlessly or use last known
+            // ideally we trigger the checkout flow differently, but for now we try to get location if possible or just checkout
+            const location = await getLocation();
+
+            const checkInTime = new Date(todayAttendance.check_in_time!);
+            const checkOutTime = new Date();
+            const hoursWorked = (checkOutTime.getTime() - checkInTime.getTime()) / (1000 * 60 * 60);
+
+            // Check location match for overtime calculation
+            const locationMatch = checkLocationMatch(
+              todayAttendance.check_in_location as any,
+              location
+            );
+
+            // If location matches check-in, use check-in location, else use current (or null if failed)
+            const checkoutLocation = location || todayAttendance.check_in_location;
+
+
+            const overtime = hoursWorked > STANDARD_WORKING_HOURS
+              ? hoursWorked - STANDARD_WORKING_HOURS
+              : 0;
+
+            const { error } = await supabase
+              .from('attendance')
+              .update({
+                check_out_time: checkOutTime.toISOString(),
+                check_out_location: checkoutLocation as unknown as Record<string, unknown>,
+                total_hours: hoursWorked,
+                overtime_hours: overtime,
+              } as any)
+              .eq('id', todayAttendance.id);
+
+            if (!error) {
+              toast({
+                title: 'Auto Checked Out',
+                description: 'Maximum working hours exceeded.',
+              });
+              fetchTodayAttendance();
+            }
+
+          } catch (e) {
+            console.error("Auto checkout failed", e);
+          }
+        }
+
+      } else if (todayAttendance?.check_in_time && todayAttendance.check_out_time) {
+        // Show final duration if checked out
+        const start = new Date(todayAttendance.check_in_time).getTime();
+        const end = new Date(todayAttendance.check_out_time).getTime();
+        const diff = end - start;
+
+        const hours = Math.floor(diff / (1000 * 60 * 60));
+        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+        setWorkingDuration(
+          `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+        );
+      } else {
+        setWorkingDuration('00:00:00');
+      }
+    };
+
+    updateDuration();
+    const timer = setInterval(updateDuration, 1000);
+    return () => clearInterval(timer);
+  }, [todayAttendance]);
 
   useEffect(() => {
     if (employee?.id) {
@@ -118,14 +209,14 @@ export default function EmployeeAttendance() {
         const checkInTime = new Date(todayAttendance.check_in_time!);
         const checkOutTime = new Date();
         const hoursWorked = (checkOutTime.getTime() - checkInTime.getTime()) / (1000 * 60 * 60);
-        
+
         const locationMatch = checkLocationMatch(
           todayAttendance.check_in_location as any,
           location
         );
-        
-        const overtime = locationMatch && hoursWorked > STANDARD_WORKING_HOURS 
-          ? hoursWorked - STANDARD_WORKING_HOURS 
+
+        const overtime = locationMatch && hoursWorked > STANDARD_WORKING_HOURS
+          ? hoursWorked - STANDARD_WORKING_HOURS
           : 0;
 
         const { error } = await supabase
@@ -170,6 +261,15 @@ export default function EmployeeAttendance() {
     );
   }
 
+  const calculateOvertime = (attendance: Attendance | null) => {
+    if (!attendance || !attendance.check_in_time) return 0;
+    const start = new Date(attendance.check_in_time).getTime();
+    const now = attendance.check_out_time ? new Date(attendance.check_out_time).getTime() : new Date().getTime();
+    const diff = now - start;
+    const hoursWorked = diff / (1000 * 60 * 60);
+    return hoursWorked > STANDARD_WORKING_HOURS ? hoursWorked - STANDARD_WORKING_HOURS : 0;
+  };
+
   return (
     <div className="space-y-6 p-4 pb-24">
       <div className="animate-fade-in">
@@ -177,19 +277,19 @@ export default function EmployeeAttendance() {
           <Clock className="h-6 w-6 text-primary" />
           Mark Attendance
         </h1>
-        <p className="text-muted-foreground">
-          {format(new Date(), 'EEEE, MMMM d, yyyy')}
+        <p className="text-muted-foreground font-medium text-lg">
+          {workingDuration}
         </p>
       </div>
 
-      {/* Live Clock */}
+      {/* Live Clock / StopWatch */}
       <Card className="animate-slide-up overflow-hidden">
         <CardContent className="p-8 text-center gradient-primary text-primary-foreground">
           <p className="text-5xl font-bold tracking-wider">
-            {format(currentTime, 'HH:mm:ss')}
+            {workingDuration}
           </p>
           <p className="mt-2 text-primary-foreground/80">
-            Current Time
+            {hasCheckedOut ? 'Total Working Time' : hasCheckedIn ? 'Working Duration' : 'Not Started'}
           </p>
         </CardContent>
       </Card>
@@ -211,6 +311,17 @@ export default function EmployeeAttendance() {
                 ? format(new Date(todayAttendance!.check_in_time!), 'hh:mm a')
                 : '--:--'}
             </p>
+            {hasCheckedIn && todayAttendance?.check_in_location && (
+              <a
+                href={getGoogleMapsLink(todayAttendance.check_in_location) || '#'}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1 text-xs text-primary hover:underline mt-1"
+              >
+                <MapPin className="h-3 w-3" />
+                View Location
+              </a>
+            )}
           </CardContent>
         </Card>
 
@@ -229,9 +340,62 @@ export default function EmployeeAttendance() {
                 ? format(new Date(todayAttendance!.check_out_time!), 'hh:mm a')
                 : '--:--'}
             </p>
+            {hasCheckedOut && todayAttendance?.check_out_location && (
+              <a
+                href={getGoogleMapsLink(todayAttendance.check_out_location) || '#'}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1 text-xs text-primary hover:underline mt-1"
+              >
+                <MapPin className="h-3 w-3" />
+                View Location
+              </a>
+            )}
           </CardContent>
         </Card>
       </div>
+
+      {/* Hours Summary */}
+      {(hasCheckedOut || (hasCheckedIn && !hasCheckedOut && calculateOvertime(todayAttendance) > 0)) && todayAttendance && (
+        <Card className="animate-slide-up">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Timer className="h-5 w-5 text-primary" />
+              {hasCheckedOut ? "Today's Summary" : "Overtime Alert"}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-3xl font-bold">
+                  {hasCheckedOut
+                    ? todayAttendance.total_hours?.toFixed(1) + 'h'
+                    : "Working..."
+                  }
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {hasCheckedOut ? 'Total Hours' : 'Shift in Progress'}
+                </p>
+              </div>
+              <div className="flex flex-col items-end gap-1">
+                {/* Live Overtime Counter */}
+                {hasCheckedIn && !hasCheckedOut && calculateOvertime(todayAttendance) > 0 && (
+                  <div className="flex items-center gap-1 text-warning font-bold animate-pulse">
+                    <Clock className="h-4 w-4" />
+                    <span>
+                      +{calculateOvertime(todayAttendance).toFixed(2)}h OT
+                    </span>
+                  </div>
+                )}
+                {/* Static Overtime Badge (if checked out) */}
+                {hasCheckedOut && todayAttendance.overtime_hours && todayAttendance.overtime_hours > 0 && (
+                  <OvertimeBadge hours={todayAttendance.overtime_hours} />
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Action Card */}
       <Card className="animate-slide-up">
@@ -240,8 +404,8 @@ export default function EmployeeAttendance() {
             {hasCheckedOut
               ? 'Today\'s Attendance Complete'
               : hasCheckedIn
-              ? 'Ready to Check Out?'
-              : 'Ready to Check In?'}
+                ? 'Ready to Check Out?'
+                : 'Ready to Check In?'}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
