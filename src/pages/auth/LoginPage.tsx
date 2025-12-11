@@ -99,8 +99,8 @@ export default function LoginPage() {
           <CardDescription>Choose your login method below</CardDescription>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue="employee" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
+          <Tabs defaultValue="admin" className="w-full">
+            {/* <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="employee" className="gap-2">
                 <User className="h-4 w-4" />
                 Employee
@@ -109,7 +109,7 @@ export default function LoginPage() {
                 <Shield className="h-4 w-4" />
                 Admin
               </TabsTrigger>
-            </TabsList>
+            </TabsList> */}
 
             <TabsContent value="employee" className="mt-6">
               <form onSubmit={handleEmployeeLogin} className="space-y-4">
@@ -148,7 +148,7 @@ export default function LoginPage() {
                   )}
                 </Button>
               </form>
-            </TabsContent>
+          </TabsContent>
 
             <TabsContent value="admin" className="mt-6">
               <form onSubmit={handleAdminLogin} className="space-y-4">
@@ -185,7 +185,7 @@ export default function LoginPage() {
                       Signing In...
                     </>
                   ) : (
-                    'Sign In as Admin'
+                    'Login'
                   )}
                 </Button>
               </form>
