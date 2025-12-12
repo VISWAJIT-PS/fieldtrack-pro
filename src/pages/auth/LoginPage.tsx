@@ -195,7 +195,7 @@ export default function LoginPage() {
       </Card>
 
       <p className="mt-6 text-center text-sm text-muted-foreground">
-        © 2024 AttendEase. All rights reserved.
+      
       </p>
     </div>
   );
