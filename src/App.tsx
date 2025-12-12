@@ -19,6 +19,7 @@ import EmployeeProfile from "./pages/employee/EmployeeProfile";
 // Admin Pages
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminEmployees from "./pages/admin/AdminEmployees";
+import AdminWorkStations from "./pages/admin/AdminWorkStations";
 import AdminAttendance from "./pages/admin/AdminAttendance";
 import AdminReports from "./pages/admin/AdminReports";
 
@@ -51,6 +52,7 @@ const App = () => (
             <Route path="/admin" element={<AdminLayout />}>
               <Route index element={<AdminDashboard />} />
               <Route path="employees" element={<AdminEmployees />} />
+              <Route path="work-stations" element={<AdminWorkStations />} />
               <Route path="attendance" element={<AdminAttendance />} />
               <Route path="reports" element={<AdminReports />} />
             </Route>

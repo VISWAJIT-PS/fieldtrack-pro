@@ -4,7 +4,8 @@ import {
   Users, 
   ClipboardList, 
   LogOut,
-  Clock
+  Clock,
+  MapPin
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
@@ -13,6 +14,7 @@ import { Button } from '@/components/ui/button';
 const navItems = [
   { to: '/admin', icon: LayoutDashboard, label: 'Dashboard', end: true },
   { to: '/admin/employees', icon: Users, label: 'Employees' },
+  { to: '/admin/work-stations', icon: MapPin, label: 'Work Stations' },
   { to: '/admin/attendance', icon: ClipboardList, label: 'Attendance' },
   { to: '/admin/reports', icon: Clock, label: 'Reports' },
 ];

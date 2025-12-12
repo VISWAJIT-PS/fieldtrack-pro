@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Menu, X, LayoutDashboard, Users, ClipboardList, Clock, LogOut } from 'lucide-react';
+import { Menu, X, LayoutDashboard, Users, ClipboardList, Clock, LogOut, MapPin } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
@@ -9,6 +9,7 @@ import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 const navItems = [
   { to: '/admin', icon: LayoutDashboard, label: 'Dashboard', end: true },
   { to: '/admin/employees', icon: Users, label: 'Employees' },
+  { to: '/admin/work-stations', icon: MapPin, label: 'Work Stations' },
   { to: '/admin/attendance', icon: ClipboardList, label: 'Attendance' },
   { to: '/admin/reports', icon: Clock, label: 'Reports' },
 ];
