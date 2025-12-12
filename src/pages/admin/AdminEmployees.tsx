@@ -15,9 +15,18 @@ import { toast } from '@/hooks/use-toast';
 import { Users, Plus, Search, Pencil, Trash2, Loader2, Mail, Lock, MapPin } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { getGoogleMapsLink } from '@/lib/utils';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+
+interface WorkStation {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+}
 
 export default function AdminEmployees() {
   const [employees, setEmployees] = useState<(Employee & { email?: string })[]>([]);
+  const [workStations, setWorkStations] = useState<WorkStation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -32,13 +41,24 @@ export default function AdminEmployees() {
     phone: '',
     email: '',
     password: '',
-    work_lat: '',
-    work_lng: '',
+    work_station_id: '',
   });
 
   useEffect(() => {
     fetchEmployees();
+    fetchWorkStations();
   }, []);
+
+  const fetchWorkStations = async () => {
+    const { data, error } = await supabase
+      .from('work_stations')
+      .select('*')
+      .order('name');
+
+    if (!error && data) {
+      setWorkStations(data);
+    }
+  };
 
   const fetchEmployees = async () => {
     const { data, error } = await supabase
@@ -81,8 +101,10 @@ export default function AdminEmployees() {
     setIsSubmitting(true);
 
     try {
-      const workLocation: GPSLocation | null = formData.work_lat && formData.work_lng
-        ? { latitude: parseFloat(formData.work_lat), longitude: parseFloat(formData.work_lng) }
+      // Find the selected work station and get its coordinates
+      const selectedStation = workStations.find(ws => ws.id === formData.work_station_id);
+      const workLocation: GPSLocation | null = selectedStation
+        ? { latitude: selectedStation.latitude, longitude: selectedStation.longitude }
         : null;
 
       if (editingEmployee) {
@@ -159,6 +181,12 @@ export default function AdminEmployees() {
 
   const handleEdit = (employee: Employee) => {
     setEditingEmployee(employee);
+    // Find the work station that matches this employee's work location
+    const matchingStation = workStations.find(ws => 
+      employee.work_location && 
+      ws.latitude === employee.work_location.latitude && 
+      ws.longitude === employee.work_location.longitude
+    );
     setFormData({
       employee_id: employee.employee_id,
       name: employee.name,
@@ -166,8 +194,7 @@ export default function AdminEmployees() {
       phone: employee.phone || '',
       email: '',
       password: '',
-      work_lat: employee.work_location?.latitude?.toString() || '',
-      work_lng: employee.work_location?.longitude?.toString() || '',
+      work_station_id: matchingStation?.id || '',
     });
     setDialogOpen(true);
   };
@@ -202,9 +229,18 @@ export default function AdminEmployees() {
       phone: '',
       email: '',
       password: '',
-      work_lat: '',
-      work_lng: '',
+      work_station_id: '',
     });
+  };
+
+  // Get station name for display
+  const getStationName = (employee: Employee): string | null => {
+    if (!employee.work_location) return null;
+    const station = workStations.find(ws => 
+      ws.latitude === employee.work_location?.latitude && 
+      ws.longitude === employee.work_location?.longitude
+    );
+    return station?.name || null;
   };
 
   const getInitials = (name: string) => {
@@ -316,36 +352,29 @@ export default function AdminEmployees() {
               <div className="space-y-2 border-t pt-4">
                 <Label className="flex items-center gap-2">
                   <MapPin className="h-4 w-4 text-primary" />
-                  Work Location (GPS Coordinates)
+                  Work Location
                 </Label>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <Label htmlFor="work_lat" className="text-xs text-muted-foreground">Latitude</Label>
-                    <Input
-                      id="work_lat"
-                      type="number"
-                      step="any"
-                      placeholder="e.g. 28.6139"
-                      value={formData.work_lat}
-                      onChange={(e) =>
-                        setFormData({ ...formData, work_lat: e.target.value })
-                      }
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="work_lng" className="text-xs text-muted-foreground">Longitude</Label>
-                    <Input
-                      id="work_lng"
-                      type="number"
-                      step="any"
-                      placeholder="e.g. 77.2090"
-                      value={formData.work_lng}
-                      onChange={(e) =>
-                        setFormData({ ...formData, work_lng: e.target.value })
-                      }
-                    />
-                  </div>
-                </div>
+                <Select
+                  value={formData.work_station_id}
+                  onValueChange={(value) => setFormData({ ...formData, work_station_id: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a work station" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-background border z-50">
+                    {workStations.length === 0 ? (
+                      <div className="py-2 px-3 text-sm text-muted-foreground">
+                        No work stations available. Add one first.
+                      </div>
+                    ) : (
+                      workStations.map((station) => (
+                        <SelectItem key={station.id} value={station.id}>
+                          {station.name}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
                 <p className="text-xs text-muted-foreground">
                   Employee check-in within 1km of this location will be marked as present
                 </p>
@@ -472,15 +501,17 @@ export default function AdminEmployees() {
                       </TableCell>
                       <TableCell className="hidden lg:table-cell">
                         {employee.work_location ? (
-                          <a
-                            href={getGoogleMapsLink(employee.work_location) || '#'}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-1 text-xs text-primary hover:underline"
-                          >
-                            <MapPin className="h-3 w-3" />
-                            View
-                          </a>
+                          <div className="flex items-center gap-1">
+                            <span className="text-sm">{getStationName(employee) || 'Custom'}</span>
+                            <a
+                              href={getGoogleMapsLink(employee.work_location) || '#'}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-primary hover:underline"
+                            >
+                              <MapPin className="h-3 w-3" />
+                            </a>
+                          </div>
                         ) : (
                           <span className="text-muted-foreground">-</span>
                         )}
