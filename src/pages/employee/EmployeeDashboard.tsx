@@ -2,17 +2,19 @@ import { useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
-import { Attendance, STANDARD_WORKING_HOURS } from '@/types';
+import { Attendance, STANDARD_WORKING_HOURS, GPSLocation } from '@/types';
 import { AttendanceSummaryCard } from '@/components/AttendanceSummaryCard';
 import { OvertimeBadge } from '@/components/OvertimeBadge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Clock, LogIn, LogOut, MapPin, Timer, CalendarDays } from 'lucide-react';
+import { Clock, LogIn, LogOut, MapPin, Timer, CalendarDays, AlertTriangle } from 'lucide-react';
 import { CameraCapture } from '@/components/CameraCapture';
 import { useGPS, checkLocationMatch } from '@/hooks/useGPS';
 import { toast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { getGoogleMapsLink } from '@/lib/utils';
+import { getGoogleMapsLink, calculateDistance, formatDistance, isWithinWorkLocation } from '@/lib/utils';
+import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 
 export default function EmployeeDashboard() {
   const { employee } = useAuth();
@@ -22,12 +24,24 @@ export default function EmployeeDashboard() {
   const [cameraOpen, setCameraOpen] = useState(false);
   const [actionType, setActionType] = useState<'check-in' | 'check-out'>('check-in');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [currentLocation, setCurrentLocation] = useState<GPSLocation | null>(null);
+  const [distanceFromWork, setDistanceFromWork] = useState<number | null>(null);
 
   useEffect(() => {
     if (employee?.id) {
       fetchTodayAttendance();
+      fetchCurrentLocation();
     }
   }, [employee?.id]);
+
+  const fetchCurrentLocation = async () => {
+    const loc = await getLocation();
+    if (loc && employee?.work_location) {
+      setCurrentLocation(loc);
+      const distance = calculateDistance(loc, employee.work_location);
+      setDistanceFromWork(distance);
+    }
+  };
 
   const fetchTodayAttendance = async () => {
     if (!employee?.id) return;
@@ -66,7 +80,6 @@ export default function EmployeeDashboard() {
     setIsSubmitting(true);
 
     try {
-      // Get GPS location
       const location = await getLocation();
       if (!location) {
         toast({
@@ -76,6 +89,18 @@ export default function EmployeeDashboard() {
         });
         setIsSubmitting(false);
         return;
+      }
+
+      // Check distance from work location
+      const isPresent = isWithinWorkLocation(location, employee.work_location);
+      const distance = calculateDistance(location, employee.work_location);
+
+      if (!isPresent && employee.work_location) {
+        toast({
+          title: 'Location Warning',
+          description: `You are ${formatDistance(distance)} away from your work location.`,
+          variant: 'destructive',
+        });
       }
 
       // Upload selfie
@@ -103,8 +128,8 @@ export default function EmployeeDashboard() {
         if (error) throw error;
 
         toast({
-          title: 'Checked In!',
-          description: `You checked in at ${format(new Date(), 'hh:mm a')}`,
+          title: isPresent ? 'Checked In!' : 'Checked In (Away from Work)',
+          description: `You checked in at ${format(new Date(), 'hh:mm a')}${!isPresent ? ` - ${formatDistance(distance)} from work location` : ''}`,
         });
       } else {
         if (!todayAttendance) {
@@ -121,13 +146,12 @@ export default function EmployeeDashboard() {
         const checkOutTime = new Date();
         const hoursWorked = (checkOutTime.getTime() - checkInTime.getTime()) / (1000 * 60 * 60);
 
-        // Check location match for overtime calculation
-        const locationMatch = checkLocationMatch(
-          todayAttendance.check_in_location as any,
-          location
-        );
+        // Check if both check-in and check-out are within work location
+        const checkInPresent = isWithinWorkLocation(todayAttendance.check_in_location, employee.work_location);
+        const checkOutPresent = isWithinWorkLocation(location, employee.work_location);
+        const bothPresent = checkInPresent && checkOutPresent;
 
-        const overtime = locationMatch && hoursWorked > STANDARD_WORKING_HOURS
+        const overtime = bothPresent && hoursWorked > STANDARD_WORKING_HOURS
           ? hoursWorked - STANDARD_WORKING_HOURS
           : 0;
 
@@ -182,14 +206,44 @@ export default function EmployeeDashboard() {
       {/* Greeting */}
       <div className="animate-fade-in">
         <h1 className="text-2xl font-bold">
-          Hello, {employee?.name?.split(' ')[0]}! 👋
+          Hello, {employee?.name?.split(' ')[0]}!
         </h1>
         <p className="text-muted-foreground">
           {format(new Date(), 'EEEE, MMMM d, yyyy')}
         </p>
       </div>
 
-
+      {/* Work Location & Distance Alert */}
+      {employee?.work_location && (
+        <Card className="animate-fade-in">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <MapPin className="h-5 w-5 text-primary" />
+                <div>
+                  <p className="font-medium text-sm">Work Location</p>
+                  <a
+                    href={getGoogleMapsLink(employee.work_location) || '#'}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-primary hover:underline"
+                  >
+                    View on Map
+                  </a>
+                </div>
+              </div>
+              {distanceFromWork !== null && (
+                <div className={`flex items-center gap-2 ${distanceFromWork <= 1000 ? 'text-success' : 'text-destructive'}`}>
+                  {distanceFromWork > 1000 && <AlertTriangle className="h-4 w-4" />}
+                  <Badge variant={distanceFromWork <= 1000 ? 'default' : 'destructive'}>
+                    {formatDistance(distanceFromWork)} away
+                  </Badge>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Quick Stats */}
       <div className="grid grid-cols-2 gap-4">
@@ -202,15 +256,23 @@ export default function EmployeeDashboard() {
           }
           subtitle={
             hasCheckedIn && todayAttendance?.check_in_location ? (
-              <a
-                href={getGoogleMapsLink(todayAttendance.check_in_location) || '#'}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1 text-xs text-primary hover:underline mt-1"
-              >
-                <MapPin className="h-3 w-3" />
-                View Location
-              </a>
+              <div className="flex items-center gap-2 mt-1">
+                <a
+                  href={getGoogleMapsLink(todayAttendance.check_in_location) || '#'}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 text-xs text-primary hover:underline"
+                >
+                  <MapPin className="h-3 w-3" />
+                  Location
+                </a>
+                {todayAttendance.check_in_selfie_url && (
+                  <Avatar className="h-6 w-6">
+                    <AvatarImage src={todayAttendance.check_in_selfie_url} alt="Check-in selfie" />
+                    <AvatarFallback>IN</AvatarFallback>
+                  </Avatar>
+                )}
+              </div>
             ) : null
           }
           icon={LogIn}
@@ -225,15 +287,23 @@ export default function EmployeeDashboard() {
           }
           subtitle={
             hasCheckedOut && todayAttendance?.check_out_location ? (
-              <a
-                href={getGoogleMapsLink(todayAttendance.check_out_location) || '#'}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1 text-xs text-primary hover:underline mt-1"
-              >
-                <MapPin className="h-3 w-3" />
-                View Location
-              </a>
+              <div className="flex items-center gap-2 mt-1">
+                <a
+                  href={getGoogleMapsLink(todayAttendance.check_out_location) || '#'}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 text-xs text-primary hover:underline"
+                >
+                  <MapPin className="h-3 w-3" />
+                  Location
+                </a>
+                {todayAttendance.check_out_selfie_url && (
+                  <Avatar className="h-6 w-6">
+                    <AvatarImage src={todayAttendance.check_out_selfie_url} alt="Check-out selfie" />
+                    <AvatarFallback>OUT</AvatarFallback>
+                  </Avatar>
+                )}
+              </div>
             ) : null
           }
           icon={LogOut}

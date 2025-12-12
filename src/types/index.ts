@@ -1,3 +1,9 @@
+export interface GPSLocation {
+  latitude: number;
+  longitude: number;
+  accuracy?: number;
+}
+
 export interface Employee {
   id: string;
   user_id: string | null;
@@ -6,6 +12,7 @@ export interface Employee {
   dob: string;
   phone: string | null;
   role: 'admin' | 'employee';
+  work_location: GPSLocation | null;
   created_at: string;
 }
 
@@ -20,6 +27,7 @@ export interface Attendance {
   check_out_selfie_url: string | null;
   total_hours: number | null;
   overtime_hours: number | null;
+  is_present: boolean | null;
   created_at: string;
 }
 

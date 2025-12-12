@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import { supabase, supabaseAdmin } from '@/integrations/supabase/client';
-import { Employee } from '@/types';
+import { Employee, GPSLocation } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -12,8 +12,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
-import { Users, Plus, Search, Pencil, Trash2, Loader2, Mail, Lock } from 'lucide-react';
+import { Users, Plus, Search, Pencil, Trash2, Loader2, Mail, Lock, MapPin } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { getGoogleMapsLink } from '@/lib/utils';
 
 export default function AdminEmployees() {
   const [employees, setEmployees] = useState<(Employee & { email?: string })[]>([]);
@@ -31,6 +32,8 @@ export default function AdminEmployees() {
     phone: '',
     email: '',
     password: '',
+    work_lat: '',
+    work_lng: '',
   });
 
   useEffect(() => {
@@ -45,15 +48,12 @@ export default function AdminEmployees() {
       .order('created_at', { ascending: false });
 
     if (!error && data) {
-      const employeesData = data as Employee[];
+      const employeesData = data as unknown as Employee[];
 
       try {
-        // Fetch auth users via the service role client and map emails to employees
         const { data: usersData, error: usersError } = await supabaseAdmin.auth.admin.listUsers();
 
         if (!usersError && usersData) {
-          // `usersData` shape can be { users: [...] } or an array depending on SDK version
-          // normalize to an array of users
           const usersArray = (usersData as any).users ?? usersData;
           const emailMap = new Map<string, string>();
           (usersArray as any[]).forEach((u) => {
@@ -70,7 +70,6 @@ export default function AdminEmployees() {
           setEmployees(employeesData as any);
         }
       } catch (err) {
-        // If admin call fails, still show employees without emails
         setEmployees(employeesData as any);
       }
     }
@@ -82,8 +81,11 @@ export default function AdminEmployees() {
     setIsSubmitting(true);
 
     try {
+      const workLocation: GPSLocation | null = formData.work_lat && formData.work_lng
+        ? { latitude: parseFloat(formData.work_lat), longitude: parseFloat(formData.work_lng) }
+        : null;
+
       if (editingEmployee) {
-        // Update existing employee
         const { error } = await supabase
           .from('employees')
           .update({
@@ -91,6 +93,7 @@ export default function AdminEmployees() {
             name: formData.name,
             dob: formData.dob,
             phone: formData.phone,
+            work_location: workLocation as any,
           })
           .eq('id', editingEmployee.id);
 
@@ -101,12 +104,10 @@ export default function AdminEmployees() {
           description: 'Employee information has been updated.',
         });
       } else {
-        // Create new employee with Supabase Auth
-        // Step 1: Create auth user
         const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
           email: formData.email,
           password: formData.password,
-          email_confirm: true, // Skip email verification
+          email_confirm: true,
         });
 
         if (authError) throw authError;
@@ -117,7 +118,6 @@ export default function AdminEmployees() {
 
         const userId = authData.user.id;
 
-        // Step 2: Insert into user_roles table
         const { error: roleError } = await supabase.from('user_roles').insert({
           user_id: userId,
           role: 'employee',
@@ -125,7 +125,6 @@ export default function AdminEmployees() {
 
         if (roleError) throw roleError;
 
-        // Step 3: Insert into employees table with user_id
         const { error: employeeError } = await supabase.from('employees').insert({
           employee_id: formData.employee_id,
           name: formData.name,
@@ -133,6 +132,7 @@ export default function AdminEmployees() {
           phone: formData.phone,
           role: 'employee',
           user_id: userId,
+          work_location: workLocation as any,
         });
 
         if (employeeError) throw employeeError;
@@ -166,6 +166,8 @@ export default function AdminEmployees() {
       phone: employee.phone || '',
       email: '',
       password: '',
+      work_lat: employee.work_location?.latitude?.toString() || '',
+      work_lng: employee.work_location?.longitude?.toString() || '',
     });
     setDialogOpen(true);
   };
@@ -200,6 +202,8 @@ export default function AdminEmployees() {
       phone: '',
       email: '',
       password: '',
+      work_lat: '',
+      work_lng: '',
     });
   };
 
@@ -252,7 +256,7 @@ export default function AdminEmployees() {
               Add Employee
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>
                 {editingEmployee ? 'Edit Employee' : 'Add New Employee'}
@@ -306,6 +310,45 @@ export default function AdminEmployees() {
                     setFormData({ ...formData, phone: e.target.value })
                   }
                 />
+              </div>
+
+              {/* Work Location */}
+              <div className="space-y-2 border-t pt-4">
+                <Label className="flex items-center gap-2">
+                  <MapPin className="h-4 w-4 text-primary" />
+                  Work Location (GPS Coordinates)
+                </Label>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label htmlFor="work_lat" className="text-xs text-muted-foreground">Latitude</Label>
+                    <Input
+                      id="work_lat"
+                      type="number"
+                      step="any"
+                      placeholder="e.g. 28.6139"
+                      value={formData.work_lat}
+                      onChange={(e) =>
+                        setFormData({ ...formData, work_lat: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="work_lng" className="text-xs text-muted-foreground">Longitude</Label>
+                    <Input
+                      id="work_lng"
+                      type="number"
+                      step="any"
+                      placeholder="e.g. 77.2090"
+                      value={formData.work_lng}
+                      onChange={(e) =>
+                        setFormData({ ...formData, work_lng: e.target.value })
+                      }
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Employee check-in within 1km of this location will be marked as present
+                </p>
               </div>
 
               {/* Email and Password - Only for new employees */}
@@ -396,7 +439,7 @@ export default function AdminEmployees() {
                     <TableHead className="hidden sm:table-cell">ID</TableHead>
                     <TableHead className="hidden md:table-cell">DOB</TableHead>
                     <TableHead className="hidden md:table-cell">Email</TableHead>
-                    <TableHead className="hidden lg:table-cell">Phone</TableHead>
+                    <TableHead className="hidden lg:table-cell">Work Location</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -428,7 +471,19 @@ export default function AdminEmployees() {
                         {employee.email || '-'}
                       </TableCell>
                       <TableCell className="hidden lg:table-cell">
-                        {employee.phone || '-'}
+                        {employee.work_location ? (
+                          <a
+                            href={getGoogleMapsLink(employee.work_location) || '#'}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1 text-xs text-primary hover:underline"
+                          >
+                            <MapPin className="h-3 w-3" />
+                            View
+                          </a>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
