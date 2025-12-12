@@ -221,7 +221,9 @@ export default function EmployeeDashboard() {
               <div className="flex items-center gap-2">
                 <MapPin className="h-5 w-5 text-primary" />
                 <div>
-                  <p className="font-medium text-sm">Work Location</p>
+                  <p className="font-medium text-sm">
+                    Work Location: <span className="font-bold">{employee?.work_stations?.name || 'Unknown'}</span>
+                  </p>
                   <a
                     href={getGoogleMapsLink(employee.work_location) || '#'}
                     target="_blank"

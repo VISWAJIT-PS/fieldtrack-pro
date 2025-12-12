@@ -60,7 +60,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const fetchEmployeeData = async (userId: string) => {
     const { data, error } = await supabase
       .from('employees')
-      .select('*')
+      .select('*, work_stations(*)')
       .eq('user_id', userId)
       .maybeSingle();
 

@@ -63,7 +63,7 @@ export default function AdminEmployees() {
   const fetchEmployees = async () => {
     const { data, error } = await supabase
       .from('employees')
-      .select('*')
+      .select('*, work_stations(*)')
       .eq('role', 'employee')
       .order('created_at', { ascending: false });
 
@@ -116,6 +116,7 @@ export default function AdminEmployees() {
             dob: formData.dob,
             phone: formData.phone,
             work_location: workLocation as any,
+            work_station_id: formData.work_station_id || null,
           })
           .eq('id', editingEmployee.id);
 
@@ -155,6 +156,7 @@ export default function AdminEmployees() {
           role: 'employee',
           user_id: userId,
           work_location: workLocation as any,
+          work_station_id: formData.work_station_id || null,
         });
 
         if (employeeError) throw employeeError;
@@ -181,8 +183,10 @@ export default function AdminEmployees() {
 
   const handleEdit = (employee: Employee) => {
     setEditingEmployee(employee);
-    // Find the work station that matches this employee's work location
-    const matchingStation = workStations.find(ws => 
+    // Prefer work_station_id or related work_stations relation, fallback to coordinate match
+    const matchingStation = workStations.find(ws =>
+      (employee as any).work_station_id ? ws.id === (employee as any).work_station_id : false
+    ) || workStations.find(ws => 
       employee.work_location && 
       ws.latitude === employee.work_location.latitude && 
       ws.longitude === employee.work_location.longitude
@@ -194,7 +198,7 @@ export default function AdminEmployees() {
       phone: employee.phone || '',
       email: '',
       password: '',
-      work_station_id: matchingStation?.id || '',
+      work_station_id: (employee as any).work_station_id || (employee as any).work_stations?.id || matchingStation?.id || '',
     });
     setDialogOpen(true);
   };
@@ -235,6 +239,13 @@ export default function AdminEmployees() {
 
   // Get station name for display
   const getStationName = (employee: Employee): string | null => {
+    // Prefer related `work_stations` relation or `work_station_id`, fallback to coordinates
+    const relatedName = (employee as any).work_stations?.name || null;
+    if (relatedName) return relatedName;
+    if ((employee as any).work_station_id) {
+      const byId = workStations.find(ws => ws.id === (employee as any).work_station_id);
+      if (byId) return byId.name;
+    }
     if (!employee.work_location) return null;
     const station = workStations.find(ws => 
       ws.latitude === employee.work_location?.latitude && 

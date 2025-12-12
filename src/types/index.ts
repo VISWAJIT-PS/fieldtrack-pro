@@ -4,6 +4,14 @@ export interface GPSLocation {
   accuracy?: number;
 }
 
+export interface WorkStation {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  created_at: string;
+}
+
 export interface Employee {
   id: string;
   user_id: string | null;
@@ -13,6 +21,8 @@ export interface Employee {
   phone: string | null;
   role: 'admin' | 'employee';
   work_location: GPSLocation | null;
+  work_station_id: string | null;
+  work_stations?: WorkStation | null;
   created_at: string;
 }
 
