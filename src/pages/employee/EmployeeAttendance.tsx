@@ -2,16 +2,18 @@ import { useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
-import { Attendance, STANDARD_WORKING_HOURS } from '@/types';
+import { Attendance, STANDARD_WORKING_HOURS, GPSLocation } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { CameraCapture } from '@/components/CameraCapture';
 import { useGPS, checkLocationMatch } from '@/hooks/useGPS';
 import { toast } from '@/hooks/use-toast';
-import { LogIn, LogOut, MapPin, Camera, Clock, CheckCircle, Loader2, Timer } from 'lucide-react';
+import { LogIn, LogOut, MapPin, Camera, Clock, CheckCircle, Loader2, Timer, AlertTriangle } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { OvertimeBadge } from '@/components/OvertimeBadge';
-import { getGoogleMapsLink } from '@/lib/utils';
+import { getGoogleMapsLink, calculateDistance, formatDistance, isWithinWorkLocation } from '@/lib/utils';
+import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 
 export default function EmployeeAttendance() {
   const { employee } = useAuth();
@@ -23,6 +25,8 @@ export default function EmployeeAttendance() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [workingDuration, setWorkingDuration] = useState('00:00:00');
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [currentLocation, setCurrentLocation] = useState<GPSLocation | null>(null);
+  const [distanceFromWork, setDistanceFromWork] = useState<number | null>(null);
 
   // Update current time every second
   useEffect(() => {
@@ -31,6 +35,21 @@ export default function EmployeeAttendance() {
     }, 1000);
     return () => clearInterval(timer);
   }, []);
+
+  // Fetch current location
+  useEffect(() => {
+    const fetchLocation = async () => {
+      const loc = await getLocation();
+      if (loc && employee?.work_location) {
+        setCurrentLocation(loc);
+        const distance = calculateDistance(loc, employee.work_location);
+        setDistanceFromWork(distance);
+      }
+    };
+    if (employee?.id) {
+      fetchLocation();
+    }
+  }, [employee?.id]);
 
   // Update working duration
   useEffect(() => {
@@ -51,25 +70,17 @@ export default function EmployeeAttendance() {
         // Auto Checkout Logic (if greater than 9 hours)
         if (diff > 9 * 60 * 60 * 1000) {
           try {
-            // We need to fetch location here again seamlessly or use last known
-            // ideally we trigger the checkout flow differently, but for now we try to get location if possible or just checkout
             const location = await getLocation();
-
             const checkInTime = new Date(todayAttendance.check_in_time!);
             const checkOutTime = new Date();
             const hoursWorked = (checkOutTime.getTime() - checkInTime.getTime()) / (1000 * 60 * 60);
-
-            // Check location match for overtime calculation
-            const locationMatch = checkLocationMatch(
-              todayAttendance.check_in_location as any,
-              location
-            );
-
-            // If location matches check-in, use check-in location, else use current (or null if failed)
             const checkoutLocation = location || todayAttendance.check_in_location;
 
+            const checkInPresent = isWithinWorkLocation(todayAttendance.check_in_location, employee?.work_location || null);
+            const checkOutPresent = isWithinWorkLocation(location, employee?.work_location || null);
+            const bothPresent = checkInPresent && checkOutPresent;
 
-            const overtime = hoursWorked > STANDARD_WORKING_HOURS
+            const overtime = bothPresent && hoursWorked > STANDARD_WORKING_HOURS
               ? hoursWorked - STANDARD_WORKING_HOURS
               : 0;
 
@@ -97,7 +108,6 @@ export default function EmployeeAttendance() {
         }
 
       } else if (todayAttendance?.check_in_time && todayAttendance.check_out_time) {
-        // Show final duration if checked out
         const start = new Date(todayAttendance.check_in_time).getTime();
         const end = new Date(todayAttendance.check_out_time).getTime();
         const diff = end - start;
@@ -117,7 +127,7 @@ export default function EmployeeAttendance() {
     updateDuration();
     const timer = setInterval(updateDuration, 1000);
     return () => clearInterval(timer);
-  }, [todayAttendance]);
+  }, [todayAttendance, employee?.work_location]);
 
   useEffect(() => {
     if (employee?.id) {
@@ -168,6 +178,18 @@ export default function EmployeeAttendance() {
         return;
       }
 
+      // Check distance from work location
+      const isPresent = isWithinWorkLocation(location, employee.work_location);
+      const distance = calculateDistance(location, employee.work_location);
+
+      if (!isPresent && employee.work_location) {
+        toast({
+          title: 'Location Warning',
+          description: `You are ${formatDistance(distance)} away from your work location.`,
+          variant: 'destructive',
+        });
+      }
+
       const fileName = `${employee.id}/${actionType}-${Date.now()}.jpg`;
       const { error: uploadError } = await supabase.storage
         .from('selfies')
@@ -192,8 +214,8 @@ export default function EmployeeAttendance() {
         if (error) throw error;
 
         toast({
-          title: 'Checked In Successfully!',
-          description: `Time: ${format(new Date(), 'hh:mm:ss a')}`,
+          title: isPresent ? 'Checked In Successfully!' : 'Checked In (Away from Work)',
+          description: `Time: ${format(new Date(), 'hh:mm:ss a')}${!isPresent ? ` - ${formatDistance(distance)} from work` : ''}`,
         });
       } else {
         if (!todayAttendance) {
@@ -210,12 +232,11 @@ export default function EmployeeAttendance() {
         const checkOutTime = new Date();
         const hoursWorked = (checkOutTime.getTime() - checkInTime.getTime()) / (1000 * 60 * 60);
 
-        const locationMatch = checkLocationMatch(
-          todayAttendance.check_in_location as any,
-          location
-        );
+        const checkInPresent = isWithinWorkLocation(todayAttendance.check_in_location, employee.work_location);
+        const checkOutPresent = isWithinWorkLocation(location, employee.work_location);
+        const bothPresent = checkInPresent && checkOutPresent;
 
-        const overtime = locationMatch && hoursWorked > STANDARD_WORKING_HOURS
+        const overtime = bothPresent && hoursWorked > STANDARD_WORKING_HOURS
           ? hoursWorked - STANDARD_WORKING_HOURS
           : 0;
 
@@ -282,6 +303,38 @@ export default function EmployeeAttendance() {
         </p>
       </div>
 
+      {/* Work Location & Distance Alert */}
+      {employee?.work_location && (
+        <Card className={`animate-fade-in ${distanceFromWork !== null && distanceFromWork > 1000 ? 'border-destructive' : ''}`}>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <MapPin className="h-5 w-5 text-primary" />
+                <div>
+                  <p className="font-medium text-sm">Work Location</p>
+                  <a
+                    href={getGoogleMapsLink(employee.work_location) || '#'}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-primary hover:underline"
+                  >
+                    View on Map
+                  </a>
+                </div>
+              </div>
+              {distanceFromWork !== null && (
+                <div className={`flex items-center gap-2 ${distanceFromWork <= 1000 ? 'text-success' : 'text-destructive'}`}>
+                  {distanceFromWork > 1000 && <AlertTriangle className="h-4 w-4" />}
+                  <Badge variant={distanceFromWork <= 1000 ? 'default' : 'destructive'}>
+                    {formatDistance(distanceFromWork)} away
+                  </Badge>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Live Clock / StopWatch */}
       <Card className="animate-slide-up overflow-hidden">
         <CardContent className="p-8 text-center gradient-primary text-primary-foreground">
@@ -311,16 +364,26 @@ export default function EmployeeAttendance() {
                 ? format(new Date(todayAttendance!.check_in_time!), 'hh:mm a')
                 : '--:--'}
             </p>
-            {hasCheckedIn && todayAttendance?.check_in_location && (
-              <a
-                href={getGoogleMapsLink(todayAttendance.check_in_location) || '#'}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1 text-xs text-primary hover:underline mt-1"
-              >
-                <MapPin className="h-3 w-3" />
-                View Location
-              </a>
+            {hasCheckedIn && (
+              <div className="flex items-center gap-2 mt-2">
+                {todayAttendance?.check_in_location && (
+                  <a
+                    href={getGoogleMapsLink(todayAttendance.check_in_location) || '#'}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 text-xs text-primary hover:underline"
+                  >
+                    <MapPin className="h-3 w-3" />
+                    Loc
+                  </a>
+                )}
+                {todayAttendance?.check_in_selfie_url && (
+                  <Avatar className="h-8 w-8">
+                    <AvatarImage src={todayAttendance.check_in_selfie_url} alt="Check-in selfie" />
+                    <AvatarFallback>IN</AvatarFallback>
+                  </Avatar>
+                )}
+              </div>
             )}
           </CardContent>
         </Card>
@@ -340,16 +403,26 @@ export default function EmployeeAttendance() {
                 ? format(new Date(todayAttendance!.check_out_time!), 'hh:mm a')
                 : '--:--'}
             </p>
-            {hasCheckedOut && todayAttendance?.check_out_location && (
-              <a
-                href={getGoogleMapsLink(todayAttendance.check_out_location) || '#'}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1 text-xs text-primary hover:underline mt-1"
-              >
-                <MapPin className="h-3 w-3" />
-                View Location
-              </a>
+            {hasCheckedOut && (
+              <div className="flex items-center gap-2 mt-2">
+                {todayAttendance?.check_out_location && (
+                  <a
+                    href={getGoogleMapsLink(todayAttendance.check_out_location) || '#'}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 text-xs text-primary hover:underline"
+                  >
+                    <MapPin className="h-3 w-3" />
+                    Loc
+                  </a>
+                )}
+                {todayAttendance?.check_out_selfie_url && (
+                  <Avatar className="h-8 w-8">
+                    <AvatarImage src={todayAttendance.check_out_selfie_url} alt="Check-out selfie" />
+                    <AvatarFallback>OUT</AvatarFallback>
+                  </Avatar>
+                )}
+              </div>
             )}
           </CardContent>
         </Card>
@@ -378,7 +451,6 @@ export default function EmployeeAttendance() {
                 </p>
               </div>
               <div className="flex flex-col items-end gap-1">
-                {/* Live Overtime Counter */}
                 {hasCheckedIn && !hasCheckedOut && calculateOvertime(todayAttendance) > 0 && (
                   <div className="flex items-center gap-1 text-warning font-bold animate-pulse">
                     <Clock className="h-4 w-4" />
@@ -387,7 +459,6 @@ export default function EmployeeAttendance() {
                     </span>
                   </div>
                 )}
-                {/* Static Overtime Badge (if checked out) */}
                 {hasCheckedOut && todayAttendance.overtime_hours && todayAttendance.overtime_hours > 0 && (
                   <OvertimeBadge hours={todayAttendance.overtime_hours} />
                 )}
@@ -472,6 +543,7 @@ export default function EmployeeAttendance() {
         </CardContent>
       </Card>
 
+      {/* Camera Dialog */}
       <CameraCapture
         open={cameraOpen}
         onOpenChange={setCameraOpen}

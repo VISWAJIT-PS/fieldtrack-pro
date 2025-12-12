@@ -65,7 +65,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .maybeSingle();
 
     if (data && !error) {
-      setEmployee(data as Employee);
+      setEmployee(data as unknown as Employee);
     }
     setIsLoading(false);
   };

@@ -8,12 +8,13 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { OvertimeBadge } from '@/components/OvertimeBadge';
-import { ClipboardList, CalendarIcon, Filter } from 'lucide-react';
+import { ClipboardList, CalendarIcon, Filter, MapPin, Image } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
-import { cn } from '@/lib/utils';
+import { cn, getGoogleMapsLink, isWithinWorkLocation } from '@/lib/utils';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 
 export default function AdminAttendance() {
   const [attendance, setAttendance] = useState<AttendanceWithEmployee[]>([]);
@@ -38,7 +39,7 @@ export default function AdminAttendance() {
       .order('name');
 
     if (data) {
-      setEmployees(data as Employee[]);
+      setEmployees(data as unknown as Employee[]);
     }
   };
 
@@ -77,13 +78,21 @@ export default function AdminAttendance() {
   };
 
   const getStatusBadge = (record: AttendanceWithEmployee) => {
+    const emp = employees.find(e => e.id === record.employee_id);
+    const checkInPresent = isWithinWorkLocation(record.check_in_location, emp?.work_location || null);
+    
     if (!record.check_in_time) {
       return <Badge variant="secondary">Absent</Badge>;
     }
     if (!record.check_out_time) {
       return <Badge className="bg-warning/10 text-warning">Working</Badge>;
     }
-    return <Badge className="bg-success/10 text-success">Complete</Badge>;
+    
+    const checkOutPresent = isWithinWorkLocation(record.check_out_location, emp?.work_location || null);
+    if (checkInPresent && checkOutPresent) {
+      return <Badge className="bg-success/10 text-success">Present</Badge>;
+    }
+    return <Badge className="bg-orange-500/10 text-orange-500">Away</Badge>;
   };
 
   if (isLoading) {
@@ -104,7 +113,7 @@ export default function AdminAttendance() {
           Attendance Records
         </h1>
         <p className="text-muted-foreground">
-          View daily attendance records
+          View daily attendance records with selfies
         </p>
       </div>
 
@@ -198,14 +207,84 @@ export default function AdminAttendance() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        {record.check_in_time
-                          ? format(new Date(record.check_in_time), 'hh:mm a')
-                          : '--:--'}
+                        <div className="space-y-1">
+                          <p>
+                            {record.check_in_time
+                              ? format(new Date(record.check_in_time), 'hh:mm a')
+                              : '--:--'}
+                          </p>
+                          <div className="flex items-center gap-2">
+                            {record.check_in_location && (
+                              <a
+                                href={getGoogleMapsLink(record.check_in_location) || '#'}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-primary hover:underline"
+                              >
+                                <MapPin className="h-3 w-3 inline" /> Loc
+                              </a>
+                            )}
+                            {record.check_in_selfie_url && (
+                              <Dialog>
+                                <DialogTrigger asChild>
+                                  <Button variant="ghost" size="sm" className="h-6 px-2">
+                                    <Image className="h-3 w-3 mr-1" /> Photo
+                                  </Button>
+                                </DialogTrigger>
+                                <DialogContent>
+                                  <DialogHeader>
+                                    <DialogTitle>Check-in Selfie</DialogTitle>
+                                  </DialogHeader>
+                                  <img 
+                                    src={record.check_in_selfie_url} 
+                                    alt="Check-in selfie" 
+                                    className="w-full rounded-lg"
+                                  />
+                                </DialogContent>
+                              </Dialog>
+                            )}
+                          </div>
+                        </div>
                       </TableCell>
                       <TableCell>
-                        {record.check_out_time
-                          ? format(new Date(record.check_out_time), 'hh:mm a')
-                          : '--:--'}
+                        <div className="space-y-1">
+                          <p>
+                            {record.check_out_time
+                              ? format(new Date(record.check_out_time), 'hh:mm a')
+                              : '--:--'}
+                          </p>
+                          <div className="flex items-center gap-2">
+                            {record.check_out_location && (
+                              <a
+                                href={getGoogleMapsLink(record.check_out_location) || '#'}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-primary hover:underline"
+                              >
+                                <MapPin className="h-3 w-3 inline" /> Loc
+                              </a>
+                            )}
+                            {record.check_out_selfie_url && (
+                              <Dialog>
+                                <DialogTrigger asChild>
+                                  <Button variant="ghost" size="sm" className="h-6 px-2">
+                                    <Image className="h-3 w-3 mr-1" /> Photo
+                                  </Button>
+                                </DialogTrigger>
+                                <DialogContent>
+                                  <DialogHeader>
+                                    <DialogTitle>Check-out Selfie</DialogTitle>
+                                  </DialogHeader>
+                                  <img 
+                                    src={record.check_out_selfie_url} 
+                                    alt="Check-out selfie" 
+                                    className="w-full rounded-lg"
+                                  />
+                                </DialogContent>
+                              </Dialog>
+                            )}
+                          </div>
+                        </div>
                       </TableCell>
                       <TableCell className="hidden sm:table-cell">
                         <div className="flex items-center gap-2">

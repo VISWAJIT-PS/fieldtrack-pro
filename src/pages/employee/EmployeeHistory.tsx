@@ -8,9 +8,12 @@ import { Calendar } from '@/components/ui/calendar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { OvertimeBadge } from '@/components/OvertimeBadge';
 import { Badge } from '@/components/ui/badge';
-import { History, Clock, MapPin } from 'lucide-react';
+import { History, Clock, MapPin, Image } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
-import { cn, getGoogleMapsLink } from '@/lib/utils';
+import { cn, getGoogleMapsLink, isWithinWorkLocation } from '@/lib/utils';
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 
 export default function EmployeeHistory() {
   const { employee } = useAuth();
@@ -50,6 +53,16 @@ export default function EmployeeHistory() {
     setIsLoading(false);
   };
 
+  const getAttendanceStatus = (record: Attendance) => {
+    const checkInPresent = isWithinWorkLocation(record.check_in_location, employee?.work_location || null);
+    const checkOutPresent = isWithinWorkLocation(record.check_out_location, employee?.work_location || null);
+    
+    if (checkInPresent && checkOutPresent) {
+      return { status: 'Present', variant: 'success' };
+    }
+    return { status: 'Away', variant: 'orange' };
+  };
+
   const totalHoursThisMonth = attendance.reduce(
     (sum, a) => sum + (a.total_hours || 0),
     0
@@ -59,6 +72,11 @@ export default function EmployeeHistory() {
     (sum, a) => sum + (a.overtime_hours || 0),
     0
   );
+
+  const presentDays = attendance.filter(a => {
+    const status = getAttendanceStatus(a);
+    return status.status === 'Present';
+  }).length;
 
   if (isLoading) {
     return (
@@ -105,19 +123,27 @@ export default function EmployeeHistory() {
       </Card>
 
       {/* Monthly Summary */}
-      <div className="grid grid-cols-2 gap-4 animate-slide-up">
+      <div className="grid grid-cols-3 gap-4 animate-slide-up">
         <Card>
           <CardContent className="p-4 text-center">
-            <p className="text-sm text-muted-foreground">Total Hours</p>
-            <p className="text-2xl font-bold text-primary">
+            <p className="text-xs text-muted-foreground">Present</p>
+            <p className="text-xl font-bold text-success">
+              {presentDays}
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 text-center">
+            <p className="text-xs text-muted-foreground">Hours</p>
+            <p className="text-xl font-bold text-primary">
               {totalHoursThisMonth.toFixed(1)}h
             </p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
-            <p className="text-sm text-muted-foreground">Overtime</p>
-            <p className="text-2xl font-bold text-warning">
+            <p className="text-xs text-muted-foreground">Overtime</p>
+            <p className="text-xl font-bold text-warning">
               {totalOvertimeThisMonth.toFixed(1)}h
             </p>
           </CardContent>
@@ -139,70 +165,117 @@ export default function EmployeeHistory() {
             </p>
           ) : (
             <div className="space-y-3">
-              {attendance.map((record) => (
-                <div
-                  key={record.id}
-                  className="flex items-center justify-between rounded-lg border p-3"
-                >
-                  <div>
-                    <p className="font-medium">
-                      {format(new Date(record.created_at), 'EEE, MMM d')}
-                    </p>
-                    <div className="mt-1 space-y-1">
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <span>
-                          {record.check_in_time
-                            ? format(new Date(record.check_in_time), 'hh:mm a')
-                            : '--:--'}
-                        </span>
-                        <span>→</span>
-                        <span>
-                          {record.check_out_time
-                            ? format(new Date(record.check_out_time), 'hh:mm a')
-                            : '--:--'}
-                        </span>
+              {attendance.map((record) => {
+                const status = getAttendanceStatus(record);
+                return (
+                  <div
+                    key={record.id}
+                    className="flex items-center justify-between rounded-lg border p-3"
+                  >
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium">
+                          {format(new Date(record.created_at), 'EEE, MMM d')}
+                        </p>
+                        <Badge 
+                          variant="secondary"
+                          className={
+                            status.variant === 'success' ? 'bg-success/10 text-success text-xs' :
+                            'bg-orange-500/10 text-orange-500 text-xs'
+                          }
+                        >
+                          {status.status}
+                        </Badge>
                       </div>
-                      <div className="flex gap-3 text-xs">
-                        {record.check_in_location && (
-                          <a
-                            href={
-                              getGoogleMapsLink(record.check_in_location) || '#'
-                            }
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-1 text-primary hover:underline"
-                            title="View Check-in Location"
-                          >
-                            <MapPin className="h-3 w-3" /> In
-                          </a>
-                        )}
-                        {record.check_out_location && (
-                          <a
-                            href={
-                              getGoogleMapsLink(record.check_out_location) ||
-                              '#'
-                            }
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-1 text-primary hover:underline"
-                            title="View Check-out Location"
-                          >
-                            <MapPin className="h-3 w-3" /> Out
-                          </a>
-                        )}
+                      <div className="mt-1 space-y-1">
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <span>
+                            {record.check_in_time
+                              ? format(new Date(record.check_in_time), 'hh:mm a')
+                              : '--:--'}
+                          </span>
+                          <span>→</span>
+                          <span>
+                            {record.check_out_time
+                              ? format(new Date(record.check_out_time), 'hh:mm a')
+                              : '--:--'}
+                          </span>
+                        </div>
+                        <div className="flex gap-3 text-xs flex-wrap">
+                          {record.check_in_location && (
+                            <a
+                              href={getGoogleMapsLink(record.check_in_location) || '#'}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-1 text-primary hover:underline"
+                              title="View Check-in Location"
+                            >
+                              <MapPin className="h-3 w-3" /> In
+                            </a>
+                          )}
+                          {record.check_out_location && (
+                            <a
+                              href={getGoogleMapsLink(record.check_out_location) || '#'}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-1 text-primary hover:underline"
+                              title="View Check-out Location"
+                            >
+                              <MapPin className="h-3 w-3" /> Out
+                            </a>
+                          )}
+                          {record.check_in_selfie_url && (
+                            <Dialog>
+                              <DialogTrigger asChild>
+                                <Button variant="ghost" size="sm" className="h-5 px-1 text-xs">
+                                  <Image className="h-3 w-3 mr-1" /> In Photo
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent>
+                                <DialogHeader>
+                                  <DialogTitle>Check-in Selfie</DialogTitle>
+                                </DialogHeader>
+                                <img 
+                                  src={record.check_in_selfie_url} 
+                                  alt="Check-in selfie" 
+                                  className="w-full rounded-lg"
+                                />
+                              </DialogContent>
+                            </Dialog>
+                          )}
+                          {record.check_out_selfie_url && (
+                            <Dialog>
+                              <DialogTrigger asChild>
+                                <Button variant="ghost" size="sm" className="h-5 px-1 text-xs">
+                                  <Image className="h-3 w-3 mr-1" /> Out Photo
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent>
+                                <DialogHeader>
+                                  <DialogTitle>Check-out Selfie</DialogTitle>
+                                </DialogHeader>
+                                <img 
+                                  src={record.check_out_selfie_url} 
+                                  alt="Check-out selfie" 
+                                  className="w-full rounded-lg"
+                                />
+                              </DialogContent>
+                            </Dialog>
+                          )}
+                        </div>
                       </div>
                     </div>
+                    <div className="text-right">
+                      <p className="font-semibold">
+                        {record.total_hours?.toFixed(1) || '0'}h
+                      </p>
+                      {record.overtime_hours && record.overtime_hours > 0 && (
+                        <OvertimeBadge hours={record.overtime_hours} />
+                      )}
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <p className="font-semibold">
-                      {record.total_hours?.toFixed(1) || '0'}h
-                    </p>
-                    {record.overtime_hours && record.overtime_hours > 0 && (
-                      <OvertimeBadge hours={record.overtime_hours} />
-                    )}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </CardContent>
